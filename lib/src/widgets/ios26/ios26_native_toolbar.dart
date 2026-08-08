@@ -50,8 +50,12 @@ class IOS26NativeToolbar extends StatefulWidget {
 class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
   MethodChannel? _channel;
   bool? _lastIsDark;
+  bool? _lastIsRtl;
   int? _lastTint;
   List<AdaptiveAppBarAction>? _lastActions;
+
+  /// The ambient Flutter direction — the app's locale, which may differ from the device's.
+  bool get _isRtl => Directionality.of(context) == TextDirection.rtl;
 
   bool get _isDark =>
       MediaQuery.platformBrightnessOf(context) == Brightness.dark;
@@ -94,6 +98,17 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
   Future<void> _syncPropsToNativeIfNeeded() async {
     final ch = _channel;
     if (ch == null) return;
+
+    // Sync directionality — the native bar cannot see Flutter's Directionality on its own.
+    final isRtl = _isRtl;
+    if (_lastIsRtl != isRtl) {
+      try {
+        await ch.invokeMethod('setDirectionality', {'isRtl': isRtl});
+        _lastIsRtl = isRtl;
+      } catch (e) {
+        // Ignore errors if platform view is not yet ready
+      }
+    }
 
     // Sync brightness
     final isDark = _isDark;
@@ -162,6 +177,10 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
       if (widget.actions != null && widget.actions!.isNotEmpty)
         'actions': widget.actions!.map((a) => a.toNativeMap()).toList(),
       'isDark': _isDark,
+      'isRtl': _isRtl,
+      // The overlay draws the leading control; the native bar must still reserve its slot so
+      // its own centred title truncates against it rather than running underneath.
+      if (widget.leading != null) 'reservesLeading': true,
       if (widget.tintColor != null) 'tint': _colorToARGB(widget.tintColor!),
     };
 
@@ -180,11 +199,11 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
               hitTestBehavior: PlatformViewHitTestBehavior.translucent,
             ),
           if (widget.leading != null)
-            Positioned(
-              left: 16,
+            PositionedDirectional(
+              start: 16,
               bottom: 3,
               child: Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: widget.leading!,
               ),
             ),
@@ -205,6 +224,7 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
     _channel = MethodChannel('adaptive_platform_ui/ios26_toolbar_$id');
     _channel!.setMethodCallHandler(_handleMethodCall);
     _lastIsDark = _isDark;
+    _lastIsRtl = _isRtl;
     _lastTint =
         widget.tintColor != null ? _colorToARGB(widget.tintColor!) : null;
     _lastActions =

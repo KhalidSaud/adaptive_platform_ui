@@ -158,7 +158,15 @@ class _IOS26ScaffoldState extends State<IOS26Scaffold>
           width: 38,
           child: AdaptiveButton.sfSymbol(
             onPressed: () => Navigator.of(context).pop(),
-            sfSymbol: SFSymbol("chevron.left", size: 20),
+            sfSymbol: // The concrete glyph by the ambient direction: the button hosts a native view that
+            // follows the device locale, so the semantic chevron.backward would not flip
+            // for an app whose locale differs from the device.
+            SFSymbol(
+              Directionality.of(context) == TextDirection.rtl
+                  ? "chevron.right"
+                  : "chevron.left",
+              size: 20,
+            ),
           ),
         );
         heroLeading = widget.useHeroBackButton

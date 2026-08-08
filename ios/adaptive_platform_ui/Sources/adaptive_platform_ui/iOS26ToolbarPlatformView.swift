@@ -55,6 +55,7 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
     private var channel: FlutterMethodChannel
 
     private var isDark: Bool = false
+    private var isRtl: Bool = false
     private var perActionTintTags: Set<Int> = []
 
     init(
@@ -73,6 +74,7 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
 
         if let params = args as? [String: Any] {
             isDark = params["isDark"] as? Bool ?? false
+            isRtl = params["isRtl"] as? Bool ?? false
         }
 
         super.init()
@@ -84,6 +86,7 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
 
         setupGradient()
         setupNavigationBar()
+        applyDirectionality()
 
         if let params = args as? [String: Any] {
             configureItems(params)
@@ -178,11 +181,27 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
         // Leading/Back button
         var leadingItems: [UIBarButtonItem] = []
 
+        // A Flutter-overlaid leading control is invisible to UIKit, so the bar centres its
+        // title across the full width and a long title runs underneath the overlay. The
+        // fixed-space placeholder claims the same slot inside the bar's own layout, which
+        // makes long titles truncate against it instead — and it mirrors with the bar's
+        // semantic direction, so the reservation lands on the correct side in RTL.
+        if params["reservesLeading"] as? Bool == true {
+            let placeholder = UIBarButtonItem(
+                barButtonSystemItem: .fixedSpace, target: nil, action: nil)
+            placeholder.width = 52
+            placeholder.isEnabled = false
+            leadingItems.append(placeholder)
+        }
+
         if let leading = params["leading"] as? String {
             let leadingButton: UIBarButtonItem
             if leading.isEmpty {
+                // The concrete glyph, chosen by the bar's own direction: the semantic
+                // chevron.backward resolves against the *device* direction at image creation,
+                // which this view may be overriding for the app's locale.
                 leadingButton = UIBarButtonItem(
-                    image: UIImage(systemName: "chevron.left"),
+                    image: UIImage(systemName: isRtl ? "chevron.right" : "chevron.left"),
                     style: .plain,
                     target: self,
                     action: #selector(leadingTapped)
@@ -290,6 +309,21 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
         channel.invokeMethod("onActionTapped", arguments: ["index": sender.tag])
     }
 
+    /// The app's locale decides the bar's direction, not the device's. UINavigationItem swaps
+    /// its left/right item groups under `forceRightToLeft`, which is exactly the mirroring the
+    /// Flutter side expects; the trait override reaches the iOS 26 glass content, same as the
+    /// tab bar.
+    private func applyDirectionality() {
+        let attribute: UISemanticContentAttribute = isRtl
+            ? .forceRightToLeft
+            : .forceLeftToRight
+        navigationBar.semanticContentAttribute = attribute
+        containerView.semanticContentAttribute = attribute
+        if #available(iOS 17.0, *) {
+            navigationBar.traitOverrides.layoutDirection = isRtl ? .rightToLeft : .leftToRight
+        }
+    }
+
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "updateTitle":
@@ -299,6 +333,15 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
             } else {
                 result(FlutterMethodNotImplemented)
             }
+        case "setDirectionality":
+            guard let args = call.arguments as? [String: Any],
+                  let rtl = (args["isRtl"] as? NSNumber)?.boolValue else {
+                result(FlutterError(code: "bad_args", message: "Missing isRtl", details: nil))
+                return
+            }
+            isRtl = rtl
+            applyDirectionality()
+            result(nil)
         case "setBrightness":
             if let args = call.arguments as? [String: Any],
                let dark = args["isDark"] as? Bool {
