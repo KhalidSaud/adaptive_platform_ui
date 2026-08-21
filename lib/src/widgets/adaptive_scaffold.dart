@@ -319,6 +319,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
           useHeroBackButton: widget.useHeroBackButton,
           tabBarHidden: widget.tabBarHidden,
           resizeToAvoidBottomInset: widget.resizeToAvoidBottomInset,
+          routeTransitions: widget.appBar?.routeTransitions ?? false,
           children: childrenList,
         ),
       );

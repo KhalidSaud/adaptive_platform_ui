@@ -26,6 +26,7 @@ class AdaptiveAppBar {
     this.titleWidget,
     this.cupertinoNavigationBar,
     this.appBar,
+    this.routeTransitions = false,
   });
 
   /// Title for the app bar
@@ -85,6 +86,18 @@ class AdaptiveAppBar {
   /// Ignored on iOS platforms.
   final PreferredSizeWidget? appBar;
 
+  /// Whether the iOS 26 native toolbar takes part in pinned route transitions (iOS 26+ with
+  /// [useNativeToolbar] only).
+  ///
+  /// When true, a route push holds the bar at its resting position while the page slides —
+  /// the way a UINavigationController keeps its bar still, and the way Flutter's own
+  /// CupertinoNavigationBar behaves with `transitionBetweenRoutes` — and crossfades the bar
+  /// with the route. While one bar is transitioning, every other native toolbar yields (its
+  /// native view is kept offstage) so exactly one set of glass buttons is on screen. Screens
+  /// that push into each other should agree on this flag, or one side of the transition will
+  /// slide while the other stays pinned.
+  final bool routeTransitions;
+
   /// Creates a copy of this app bar with the given fields replaced
   AdaptiveAppBar copyWith({
     String? title,
@@ -96,6 +109,7 @@ class AdaptiveAppBar {
     Widget? titleWidget,
     PreferredSizeWidget? cupertinoNavigationBar,
     PreferredSizeWidget? appBar,
+    bool? routeTransitions,
   }) {
     return AdaptiveAppBar(
       title: title ?? this.title,
@@ -108,6 +122,7 @@ class AdaptiveAppBar {
       cupertinoNavigationBar:
           cupertinoNavigationBar ?? this.cupertinoNavigationBar,
       appBar: appBar ?? this.appBar,
+      routeTransitions: routeTransitions ?? this.routeTransitions,
     );
   }
 }

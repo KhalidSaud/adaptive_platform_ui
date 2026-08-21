@@ -6,6 +6,7 @@ import '../adaptive_button.dart';
 import '../adaptive_scaffold.dart';
 import 'ios26_native_tab_bar.dart';
 import 'ios26_native_toolbar.dart';
+import 'ios26_toolbar_route_transition.dart';
 
 /// Height of the iOS 26 Liquid Glass toolbar's content area (excluding the
 /// status bar), matching [IOS26NativeToolbar]'s default height. The toolbar is
@@ -27,6 +28,7 @@ class IOS26Scaffold extends StatefulWidget {
     this.useHeroBackButton = true,
     this.tabBarHidden = false,
     this.resizeToAvoidBottomInset,
+    this.routeTransitions = false,
     required this.children,
   });
 
@@ -44,6 +46,10 @@ class IOS26Scaffold extends StatefulWidget {
   final bool useHeroBackButton;
   final bool tabBarHidden;
   final bool? resizeToAvoidBottomInset;
+
+  /// See [AdaptiveAppBar.routeTransitions].
+  final bool routeTransitions;
+
   final List<Widget> children;
 
   @override
@@ -255,21 +261,27 @@ class _IOS26ScaffoldState extends State<IOS26Scaffold>
             left: 0,
             right: 0,
             top: 0,
-            child: IOS26NativeToolbar(
-              title: widget.title,
-              leading: widget.leading ?? heroLeading,
-              showNativeView: showNativeView,
-              actions: widget.actions,
-              tintColor: widget.tintColor,
-              titleWidget: widget.titleWidget,
-              onActionTap: (index) {
-                // Call the appropriate action callback
-                if (widget.actions != null &&
-                    index >= 0 &&
-                    index < widget.actions!.length) {
-                  widget.actions![index].onPressed();
-                }
-              },
+            // Held at the bar's resting position and crossfaded over the page slide when
+            // route transitions are on, so the bar reads as one fixed piece of chrome.
+            child: IOS26ToolbarRouteTransition(
+              enabled: widget.routeTransitions,
+              child: IOS26NativeToolbar(
+                title: widget.title,
+                leading: widget.leading ?? heroLeading,
+                showNativeView: showNativeView,
+                actions: widget.actions,
+                tintColor: widget.tintColor,
+                titleWidget: widget.titleWidget,
+                routeTransitions: widget.routeTransitions,
+                onActionTap: (index) {
+                  // Call the appropriate action callback
+                  if (widget.actions != null &&
+                      index >= 0 &&
+                      index < widget.actions!.length) {
+                    widget.actions![index].onPressed();
+                  }
+                },
+              ),
             ),
           ),
         // Tab bar - only show if destinations exist

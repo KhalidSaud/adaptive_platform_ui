@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../../utils/animation.dart';
 import '../adaptive_app_bar_action.dart';
+import 'ios26_toolbar_route_transition.dart';
 
 /// Native iOS 26 UINavigationBar widget using platform views
 /// Implements Liquid Glass design with native blur effects
@@ -20,6 +24,7 @@ class IOS26NativeToolbar extends StatefulWidget {
     this.tintColor,
     this.height = 44.0,
     this.showNativeView = true,
+    this.routeTransitions = false,
   });
 
   final String? title;
@@ -43,6 +48,15 @@ class IOS26NativeToolbar extends StatefulWidget {
   final double height;
   final bool showNativeView;
 
+  /// Whether this bar takes part in pinned route transitions.
+  ///
+  /// When true, the enclosing scaffold holds the bar at its resting position over the page
+  /// slide and crossfades it with the route ([IOS26ToolbarRouteTransition]), and this widget
+  /// claims the chrome while its route is animating so every other toolbar hides its native
+  /// view — the transitioning bar is the only copy on screen, exactly one set of glass
+  /// buttons at the bar's position at any moment.
+  final bool routeTransitions;
+
   @override
   State<IOS26NativeToolbar> createState() => _IOS26NativeToolbarState();
 }
@@ -53,6 +67,18 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
   bool? _lastIsRtl;
   int? _lastTint;
   List<AdaptiveAppBarAction>? _lastActions;
+
+  ModalRoute<Object?>? _route;
+  Animation<double>? _routeAnimation;
+  bool _yieldedToForeignTransition = false;
+
+  @override
+  void initState() {
+    super.initState();
+    IOS26ToolbarRouteChrome.owner.addListener(_onChromeOwnerChanged);
+    final owner = IOS26ToolbarRouteChrome.owner.value;
+    _yieldedToForeignTransition = owner != null && !identical(owner, this);
+  }
 
   /// The ambient Flutter direction — the app's locale, which may differ from the device's.
   bool get _isRtl => Directionality.of(context) == TextDirection.rtl;
@@ -78,7 +104,73 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _wireRoute();
     _syncPropsToNativeIfNeeded();
+    _scheduleChromeSync();
+  }
+
+  void _wireRoute() {
+    final route = ModalRoute.of(context);
+    if (identical(route, _route)) return;
+    _routeAnimation?.removeStatusListener(_onRouteStatus);
+    _route = route;
+    _routeAnimation = route?.animation;
+    _routeAnimation?.addStatusListener(_onRouteStatus);
+  }
+
+  void _onRouteStatus(AnimationStatus status) => _scheduleChromeSync();
+
+  void _onChromeOwnerChanged() {
+    final owner = IOS26ToolbarRouteChrome.owner.value;
+    final yielded = owner != null && !identical(owner, this);
+    if (yielded == _yieldedToForeignTransition || !mounted) return;
+    _yieldedToForeignTransition = yielded;
+    // The notifier can fire mid-frame — a claim from a status listener, or a release while a
+    // popped route's tree is being torn down (tree locked) — when setState is not allowed.
+    switch (SchedulerBinding.instance.schedulerPhase) {
+      case SchedulerPhase.idle:
+      case SchedulerPhase.transientCallbacks:
+      case SchedulerPhase.postFrameCallbacks:
+        setState(() {});
+      case SchedulerPhase.midFrameMicrotasks:
+      case SchedulerPhase.persistentCallbacks:
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() {});
+        });
+    }
+  }
+
+  /// Claims the chrome while this bar's route is animating and releases it once settled —
+  /// off the frame, because it is reached from build-phase hooks and the claim notifies
+  /// every other toolbar.
+  void _scheduleChromeSync() {
+    if (!widget.routeTransitions) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final animation = _route?.animation;
+      if (animation == null) return;
+      if (animation.isCompleted) {
+        IOS26ToolbarRouteChrome.release(this);
+      } else if (!animation.isDismissed) {
+        // Mid-transition: push, pop, or an interactive pop drag (which the framework
+        // reports as `forward`).
+        IOS26ToolbarRouteChrome.claim(this);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // A microtask, not a direct call: dispose runs while a popped route's tree is being
+    // finalized (tree locked), and releasing here notifies every other toolbar — whose
+    // setState must land after the teardown, or the revealed bar stays hidden forever.
+    if (widget.routeTransitions) {
+      final candidate = this;
+      scheduleMicrotask(() => IOS26ToolbarRouteChrome.release(candidate));
+    }
+    _routeAnimation?.removeStatusListener(_onRouteStatus);
+    IOS26ToolbarRouteChrome.owner.removeListener(_onChromeOwnerChanged);
+    super.dispose();
   }
 
   @override
@@ -191,12 +283,19 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
       child: Stack(
         children: [
           if (widget.showNativeView)
-            UiKitView(
-              viewType: 'adaptive_platform_ui/ios26_toolbar',
-              creationParams: creationParams,
-              creationParamsCodec: const StandardMessageCodec(),
-              onPlatformViewCreated: _onPlatformViewCreated,
-              hitTestBehavior: PlatformViewHitTestBehavior.translucent,
+            // Offstage rather than removed while another bar's transition owns the chrome:
+            // the platform view survives, so this bar reappears the same frame the
+            // transition ends instead of re-initialising a UINavigationBar and flashing an
+            // empty corner.
+            Offstage(
+              offstage: _yieldedToForeignTransition,
+              child: UiKitView(
+                viewType: 'adaptive_platform_ui/ios26_toolbar',
+                creationParams: creationParams,
+                creationParamsCodec: const StandardMessageCodec(),
+                onPlatformViewCreated: _onPlatformViewCreated,
+                hitTestBehavior: PlatformViewHitTestBehavior.translucent,
+              ),
             ),
           if (widget.leading != null)
             PositionedDirectional(
