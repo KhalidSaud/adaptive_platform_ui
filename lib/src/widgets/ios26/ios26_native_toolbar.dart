@@ -140,21 +140,28 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
     }
   }
 
-  /// Claims the chrome while this bar's route is animating and releases it once settled —
-  /// off the frame, because it is reached from build-phase hooks and the claim notifies
-  /// every other toolbar.
+  /// Claims the chrome while this bar's route is PUSHING and releases it in every other
+  /// state — off the frame, because it is reached from build-phase hooks and the claim
+  /// notifies every other toolbar.
+  ///
+  /// Only the push claims. On the way in, the bar underneath would otherwise stay legible at
+  /// the same trailing position while this bar fades in over it — two sets of glass buttons.
+  /// On the way out (pop or a back-swipe, which the framework reports as `forward` with a
+  /// user gesture in progress), the revealed bar must be there from the first frame, exposed
+  /// progressively by the sliding page edge — hiding it until the pop settles is what made
+  /// its buttons blink in after the page had already landed.
   void _scheduleChromeSync() {
     if (!widget.routeTransitions) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final animation = _route?.animation;
       if (animation == null) return;
-      if (animation.isCompleted) {
-        IOS26ToolbarRouteChrome.release(this);
-      } else if (!animation.isDismissed) {
-        // Mid-transition: push, pop, or an interactive pop drag (which the framework
-        // reports as `forward`).
+      final pushing = animation.status == AnimationStatus.forward &&
+          !(_route?.navigator?.userGestureInProgress ?? false);
+      if (pushing) {
         IOS26ToolbarRouteChrome.claim(this);
+      } else {
+        IOS26ToolbarRouteChrome.release(this);
       }
     });
   }

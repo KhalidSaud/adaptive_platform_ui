@@ -78,12 +78,14 @@ class _IOS26ToolbarRouteTransitionState
         reverseCurve: Curves.fastEaseInToSlowEaseOut.flipped,
       );
       // The bar is fully readable well before the page has settled — iOS crossfades bar
-      // contents quickly while the content is still travelling. Reversed (a pop), the same
-      // interval makes the bar spend most of the slide fading out, which reads as the
-      // deliberate hand-off it is.
+      // contents quickly while the content is still travelling. On the way out (a pop), the
+      // reverse interval empties the bar in the first half of the slide, before the moving
+      // page edge uncovers the revealed screen's own bar underneath — so the two bars are
+      // never legible at once.
       _fadeInCurve = CurvedAnimation(
         parent: animation,
         curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+        reverseCurve: const Interval(0.55, 1.0, curve: Curves.easeIn),
       );
     }
     if (secondary != null) {
