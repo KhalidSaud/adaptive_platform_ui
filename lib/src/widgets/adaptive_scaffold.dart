@@ -376,7 +376,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                       }
                       return CupertinoButton(
                         padding: EdgeInsets.zero,
-                        onPressed: action.onPressed,
+                        onPressed: action.enabled ? action.onPressed : null,
                         child: actionChild,
                       );
                     }).toList(),
@@ -576,7 +576,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
                     }
                     return CupertinoButton(
                       padding: EdgeInsets.zero,
-                      onPressed: action.onPressed,
+                      onPressed: action.enabled ? action.onPressed : null,
                       child: actionChild,
                     );
                   }).toList(),
@@ -654,7 +654,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
           actions: widget.appBar!.actions?.map((action) {
             if (action.title != null) {
               return TextButton(
-                onPressed: action.onPressed,
+                onPressed: action.enabled ? action.onPressed : null,
                 child: Text(action.title!),
               );
             }
@@ -662,7 +662,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
               icon: action.iconWidget ?? (action.icon != null
                   ? Icon(action.icon!)
                   : const Icon(Icons.circle)),
-              onPressed: action.onPressed,
+              onPressed: action.enabled ? action.onPressed : null,
             );
           }).toList(),
           leading: widget.appBar!.leading,
@@ -754,7 +754,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
         actions: widget.appBar!.actions?.map((action) {
           if (action.title != null) {
             return TextButton(
-              onPressed: action.onPressed,
+              onPressed: action.enabled ? action.onPressed : null,
               child: Text(action.title!),
             );
           }
@@ -762,7 +762,7 @@ class _AdaptiveScaffoldState extends State<AdaptiveScaffold> {
             icon: action.iconWidget ?? (action.icon != null
                 ? Icon(action.icon!)
                 : const Icon(Icons.circle)),
-            onPressed: action.onPressed,
+            onPressed: action.enabled ? action.onPressed : null,
           );
         }).toList(),
         leading: widget.appBar!.leading,

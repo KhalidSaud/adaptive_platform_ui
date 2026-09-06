@@ -28,6 +28,7 @@ class AdaptiveAppBarAction {
     required this.onPressed,
     this.spacerAfter = ToolbarSpacerType.none,
     this.prominent = false,
+    this.enabled = true,
     this.tintColor,
   }) : assert(
          iosSymbol != null ||
@@ -64,6 +65,9 @@ class AdaptiveAppBarAction {
 
   /// Callback when the action is tapped
   final VoidCallback onPressed;
+
+  /// Whether the action can be invoked. Native items expose this to VoiceOver as well.
+  final bool enabled;
 
   /// Add spacer after this action in iOS 26+ toolbar
   /// - `none`: No spacer (default)
@@ -102,6 +106,8 @@ class AdaptiveAppBarAction {
         other.title == title &&
         other.accessibilityLabel == accessibilityLabel &&
         other.prominent == prominent &&
+        other.spacerAfter == spacerAfter &&
+        other.enabled == enabled &&
         other.tintColor == tintColor;
   }
 
@@ -113,6 +119,8 @@ class AdaptiveAppBarAction {
     title,
     accessibilityLabel,
     prominent,
+    spacerAfter,
+    enabled,
     tintColor,
   );
 
@@ -122,6 +130,7 @@ class AdaptiveAppBarAction {
       if (iosSymbol != null) 'icon': iosSymbol!,
       if (title != null) 'title': title!,
       if (accessibilityLabel != null) 'accessibilityLabel': accessibilityLabel!,
+      'enabled': enabled,
       'spacerAfter': spacerAfter.index, // 0=none, 1=fixed, 2=flexible
       if (prominent) 'prominent': true,
       if (tintColor != null) 'tint': tintColor!.toARGB32(),

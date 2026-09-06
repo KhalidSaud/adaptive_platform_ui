@@ -28,28 +28,28 @@ class iOS26ToolbarFactory: NSObject, FlutterPlatformViewFactory {
     }
 }
 
-// MARK: - Container View with Gradient
-class ToolbarContainerView: UIView {
-    var gradientLayer: CAGradientLayer?
-    var onTraitChange: (() -> Void)?
+// UIKit measures this transparent title slot against its actual bar-button groups. Flutter
+// draws the title, but must use these bounds rather than estimating widths from action counts.
+private class ToolbarTitleSlot: UIView {
+    var onLayout: (() -> Void)?
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.layoutFittingExpandedSize.width, height: 44)
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        intrinsicContentSize
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Extend gradient below the container bounds for smooth fade
-        gradientLayer?.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height + 30)
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            onTraitChange?()
-        }
+        onLayout?()
     }
 }
 
 // MARK: - Platform View
 class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
-    private var containerView: ToolbarContainerView
+    private var containerView: UIView
     private var navigationBar: UINavigationBar
     private var navigationItem: UINavigationItem
     private var channel: FlutterMethodChannel
@@ -57,6 +57,8 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
     private var isDark: Bool = false
     private var isRtl: Bool = false
     private var perActionTintTags: Set<Int> = []
+    private let titleSlot = ToolbarTitleSlot(frame: CGRect(x: 0, y: 0, width: UIView.layoutFittingExpandedSize.width, height: 44))
+    private var lastTitleInsets: UIEdgeInsets?
 
     init(
         frame: CGRect,
@@ -64,7 +66,7 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
         arguments args: Any?,
         binaryMessenger messenger: FlutterBinaryMessenger
     ) {
-        containerView = ToolbarContainerView(frame: frame)
+        containerView = UIView(frame: frame)
         navigationBar = UINavigationBar()
         navigationItem = UINavigationItem()
         channel = FlutterMethodChannel(
@@ -79,59 +81,32 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
 
         super.init()
 
-        // Apply Flutter's brightness override
-        if #available(iOS 13.0, *) {
-            containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
-        }
-
-        setupGradient()
         setupNavigationBar()
-        applyDirectionality()
-
-        if let params = args as? [String: Any] {
-            configureItems(params)
-            // Apply global tint color after configuring items
-            if let n = params["tint"] as? NSNumber {
-                let color = Self.colorFromARGB(n.intValue)
-                containerView.tintColor = color
-                navigationBar.tintColor = color
-                // Apply to items that don't have their own per-action tint
-                for item in (navigationItem.leftBarButtonItems ?? []) + (navigationItem.rightBarButtonItems ?? []) {
-                    if !perActionTintTags.contains(item.tag) {
-                        item.tintColor = color
-                    }
-                }
-            }
+        titleSlot.isUserInteractionEnabled = false
+        titleSlot.accessibilityElementsHidden = true
+        titleSlot.onLayout = { [weak self] in
+            // UINavigationBar can still be laying out its children in this callback.
+            DispatchQueue.main.async { [weak self] in self?.reportTitleInsets() }
         }
-
+        if let params = args as? [String: Any] { applyConfiguration(params) }
         channel.setMethodCallHandler { [weak self] call, result in
-            self?.handleMethodCall(call, result: result)
+            guard let self else { result(nil); return }
+            self.handleMethodCall(call, result: result)
         }
+    }
+
+    deinit {
+        channel.setMethodCallHandler(nil)
     }
 
     func view() -> UIView {
         return containerView
     }
 
-    private func setupGradient() {
-        containerView.clipsToBounds = false
-
-        // Add gradient layer for better text readability
-        let gradientLayer = CAGradientLayer()
-        gradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
-        gradientLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
-        containerView.layer.insertSublayer(gradientLayer, at: 0)
-        containerView.gradientLayer = gradientLayer
-        containerView.onTraitChange = { [weak self] in
-            self?.updateGradientColors()
-        }
-        updateGradientColors()
-    }
-
     private func setupNavigationBar() {
         containerView.backgroundColor = .clear
 
-        // Make navigation bar transparent to show gradient behind
+        // Flutter owns the scroll backing; only the controls carry native Liquid Glass.
         navigationBar.translatesAutoresizingMaskIntoConstraints = false
         navigationBar.items = [navigationItem]
 
@@ -158,18 +133,38 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
         ])
     }
 
-    private func updateGradientColors() {
-        let isDarkMode = containerView.traitCollection.userInterfaceStyle == .dark
-        let baseColor = isDarkMode ? UIColor.black : UIColor.white
+    private func applyConfiguration(_ params: [String: Any]) {
+        isDark = params["isDark"] as? Bool ?? false
+        isRtl = params["isRtl"] as? Bool ?? false
+        containerView.overrideUserInterfaceStyle = isDark ? .dark : .light
+        applyDirectionality()
+        navigationItem.title = params["title"] as? String
+        navigationItem.titleView = params["hasTitleWidget"] as? Bool == true ? titleSlot : nil
+        perActionTintTags.removeAll()
+        configureItems(params)
+        let tint = (params["tint"] as? NSNumber).map { Self.colorFromARGB($0.intValue) }
+        containerView.tintColor = tint
+        navigationBar.tintColor = tint
+        for item in (navigationItem.leftBarButtonItems ?? []) + (navigationItem.rightBarButtonItems ?? []) {
+            if !perActionTintTags.contains(item.tag) { item.tintColor = tint }
+        }
+        navigationBar.setNeedsLayout()
+        navigationBar.layoutIfNeeded()
+        // Also reply after creation: the initial layout can precede Dart's channel handler.
+        DispatchQueue.main.async { [weak self] in self?.reportTitleInsets(force: true) }
+    }
 
-        // Subtle gradient for text readability
-        containerView.gradientLayer?.colors = [
-            baseColor.withAlphaComponent(0.85).cgColor,  // 0% - slightly transparent top
-            baseColor.withAlphaComponent(0.6).cgColor,   // 40% - fade
-            baseColor.withAlphaComponent(0.2).cgColor,   // 70% - more fade
-            baseColor.withAlphaComponent(0.0).cgColor    // 100% - transparent
-        ]
-        containerView.gradientLayer?.locations = [0.0, 0.4, 0.7, 1.0]
+    private func reportTitleInsets(force: Bool = false) {
+        guard navigationItem.titleView === titleSlot, titleSlot.superview != nil,
+              containerView.bounds.width > 0, titleSlot.bounds.width > 0 else { return }
+        let frame = titleSlot.convert(titleSlot.bounds, to: containerView)
+        let insets = UIEdgeInsets(top: 0, left: max(0, frame.minX), bottom: 0,
+                                  right: max(0, containerView.bounds.width - frame.maxX))
+        guard force || insets != lastTitleInsets else { return }
+        lastTitleInsets = insets
+        channel.invokeMethod("onTitleInsetsChanged", arguments: [
+            "left": insets.left, "right": insets.right
+        ])
     }
 
     private func configureItems(_ params: [String: Any]) {
@@ -250,6 +245,7 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
                 if let btn = button {
                     btn.tag = index
                     btn.accessibilityLabel = action["accessibilityLabel"] as? String
+                    btn.isEnabled = action["enabled"] as? Bool ?? true
 
                     // Apply prominent style (iOS 26+)
                     if action["prominent"] as? Bool == true {
@@ -326,68 +322,8 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
 
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
-        case "updateTitle":
-            if let args = call.arguments as? [String: Any], let title = args["title"] as? String {
-                navigationItem.title = title
-                result(nil)
-            } else {
-                result(FlutterMethodNotImplemented)
-            }
-        case "setDirectionality":
-            guard let args = call.arguments as? [String: Any],
-                  let rtl = (args["isRtl"] as? NSNumber)?.boolValue else {
-                result(FlutterError(code: "bad_args", message: "Missing isRtl", details: nil))
-                return
-            }
-            isRtl = rtl
-            applyDirectionality()
-            result(nil)
-        case "setBrightness":
-            if let args = call.arguments as? [String: Any],
-               let dark = args["isDark"] as? Bool {
-                isDark = dark
-                if #available(iOS 13.0, *) {
-                    containerView.overrideUserInterfaceStyle = dark ? .dark : .light
-                }
-            }
-            result(nil)
-        case "updateActions":
-            if let args = call.arguments as? [String: Any] {
-                perActionTintTags.removeAll()
-                configureItems(args)
-                // Re-apply global tint to items without per-action tint
-                if let globalTint = navigationBar.tintColor {
-                    for item in (navigationItem.leftBarButtonItems ?? []) + (navigationItem.rightBarButtonItems ?? []) {
-                        if !perActionTintTags.contains(item.tag) {
-                            item.tintColor = globalTint
-                        }
-                    }
-                }
-            }
-            result(nil)
-        case "setStyle":
-            if let args = call.arguments as? [String: Any] {
-                if let tintValue = args["tint"] {
-                    if let n = tintValue as? NSNumber {
-                        let color = Self.colorFromARGB(n.intValue)
-                        containerView.tintColor = color
-                        navigationBar.tintColor = color
-                        for item in (navigationItem.leftBarButtonItems ?? []) + (navigationItem.rightBarButtonItems ?? []) {
-                            if !perActionTintTags.contains(item.tag) {
-                                item.tintColor = color
-                            }
-                        }
-                    } else if tintValue is NSNull {
-                        containerView.tintColor = nil
-                        navigationBar.tintColor = nil
-                        for item in (navigationItem.leftBarButtonItems ?? []) + (navigationItem.rightBarButtonItems ?? []) {
-                            if !perActionTintTags.contains(item.tag) {
-                                item.tintColor = nil
-                            }
-                        }
-                    }
-                }
-            }
+        case "updateConfiguration":
+            if let args = call.arguments as? [String: Any] { applyConfiguration(args) }
             result(nil)
         default:
             result(FlutterMethodNotImplemented)

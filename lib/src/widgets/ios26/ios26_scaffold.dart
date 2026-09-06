@@ -160,18 +160,28 @@ class _IOS26ScaffoldState extends State<IOS26Scaffold>
         final backButton = Container(
           // 62px accounts for the iPadOS system window toolbar width in windowed mode
           margin: EdgeInsets.only(left: _getIsWindowed() ? 62 : 0),
-          height: 38,
-          width: 38,
-          child: AdaptiveButton.sfSymbol(
-            onPressed: () => Navigator.of(context).pop(),
-            sfSymbol: // The concrete glyph by the ambient direction: the button hosts a native view that
-            // follows the device locale, so the semantic chevron.backward would not flip
-            // for an app whose locale differs from the device.
-            SFSymbol(
-              Directionality.of(context) == TextDirection.rtl
-                  ? "chevron.right"
-                  : "chevron.left",
-              size: 20,
+          height: 44,
+          width: 44,
+          child: Semantics(
+            button: true,
+            label: CupertinoLocalizations.of(context).backButtonLabel,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: ExcludeSemantics(
+              child: AdaptiveButton.sfSymbol(
+                onPressed: () => Navigator.of(context).maybePop(),
+                size: AdaptiveButtonSize.large,
+                minSize: const Size.square(44),
+                useSmoothRectangleBorder: false,
+                sfSymbol: // The concrete glyph by the ambient direction: the button hosts a native view that
+                    // follows the device locale, so the semantic chevron.backward would not flip
+                    // for an app whose locale differs from the device.
+                    SFSymbol(
+                      Directionality.of(context) == TextDirection.rtl
+                          ? "chevron.right"
+                          : "chevron.left",
+                      size: 20,
+                    ),
+              ),
             ),
           ),
         );
@@ -184,7 +194,7 @@ class _IOS26ScaffoldState extends State<IOS26Scaffold>
               )
             : backButton;
       } else {
-        const placeholder = SizedBox(height: 38, width: 38);
+        const placeholder = SizedBox(height: 44, width: 44);
         heroLeading = widget.useHeroBackButton
             ? const Hero(tag: 'adaptive_back_button', child: placeholder)
             : placeholder;
@@ -242,10 +252,12 @@ class _IOS26ScaffoldState extends State<IOS26Scaffold>
       final mq = MediaQuery.of(context);
       bodyContent = MediaQuery(
         data: mq.copyWith(
-          padding:
-              mq.padding.copyWith(top: mq.padding.top + kToolbarContentHeight),
-          viewPadding: mq.viewPadding
-              .copyWith(top: mq.viewPadding.top + kToolbarContentHeight),
+          padding: mq.padding.copyWith(
+            top: mq.padding.top + kToolbarContentHeight,
+          ),
+          viewPadding: mq.viewPadding.copyWith(
+            top: mq.viewPadding.top + kToolbarContentHeight,
+          ),
         ),
         child: bodyContent,
       );

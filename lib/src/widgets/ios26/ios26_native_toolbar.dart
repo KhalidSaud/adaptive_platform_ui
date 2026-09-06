@@ -63,9 +63,8 @@ class IOS26NativeToolbar extends StatefulWidget {
 
 class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
   MethodChannel? _channel;
-  bool? _lastIsDark;
-  bool? _lastIsRtl;
-  int? _lastTint;
+  Map<String, dynamic>? _lastConfiguration;
+  EdgeInsets? _nativeTitleInsets;
   List<AdaptiveAppBarAction>? _lastActions;
 
   ModalRoute<Object?>? _route;
@@ -91,8 +90,9 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
     Color resolvedColor = color;
     if (color is CupertinoDynamicColor) {
       final brightness = MediaQuery.platformBrightnessOf(context);
-      resolvedColor =
-          brightness == Brightness.dark ? color.darkColor : color.color;
+      resolvedColor = brightness == Brightness.dark
+          ? color.darkColor
+          : color.color;
     }
 
     return ((resolvedColor.a * 255.0).round() & 0xff) << 24 |
@@ -156,7 +156,8 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
       if (!mounted) return;
       final animation = _route?.animation;
       if (animation == null) return;
-      final pushing = animation.status == AnimationStatus.forward &&
+      final pushing =
+          animation.status == AnimationStatus.forward &&
           !(_route?.navigator?.userGestureInProgress ?? false);
       if (pushing) {
         IOS26ToolbarRouteChrome.claim(this);
@@ -177,6 +178,8 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
     }
     _routeAnimation?.removeStatusListener(_onRouteStatus);
     IOS26ToolbarRouteChrome.owner.removeListener(_onChromeOwnerChanged);
+    _channel?.setMethodCallHandler(null);
+    _channel = null;
     super.dispose();
   }
 
@@ -184,79 +187,45 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
   void didUpdateWidget(IOS26NativeToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncPropsToNativeIfNeeded();
-
-    if (widget.title != oldWidget.title) {
-      final ch = _channel;
-      // Skip when a titleWidget overlay is shown — the native title stays hidden
-      if (ch != null && widget.title != null && widget.titleWidget == null) {
-        ch.invokeMethod('updateTitle', {'title': widget.title!});
-      }
-    }
   }
 
-  Future<void> _syncPropsToNativeIfNeeded() async {
-    final ch = _channel;
-    if (ch == null) return;
+  Map<String, dynamic> get _configuration => {
+    'title': widget.titleWidget == null ? widget.title : null,
+    'hasTitleWidget': widget.titleWidget != null,
+    'leading': widget.leading == null ? widget.leadingText : null,
+    'reservesLeading': widget.leading != null,
+    'isDark': _isDark,
+    'isRtl': _isRtl,
+    'tint': widget.tintColor == null ? null : _colorToARGB(widget.tintColor!),
+  };
 
-    // Sync directionality — the native bar cannot see Flutter's Directionality on its own.
-    final isRtl = _isRtl;
-    if (_lastIsRtl != isRtl) {
-      try {
-        await ch.invokeMethod('setDirectionality', {'isRtl': isRtl});
-        _lastIsRtl = isRtl;
-      } catch (e) {
-        // Ignore errors if platform view is not yet ready
-      }
+  void _syncPropsToNativeIfNeeded() {
+    final channel = _channel;
+    if (channel == null) return;
+    final configuration = _configuration;
+    if (mapEquals(_lastConfiguration, configuration) &&
+        listEquals(_lastActions, widget.actions)) {
+      return;
     }
 
-    // Sync brightness
-    final isDark = _isDark;
-    if (_lastIsDark != isDark) {
-      try {
-        await ch.invokeMethod('setBrightness', {'isDark': isDark});
-        _lastIsDark = isDark;
-      } catch (e) {
-        // Ignore errors if platform view is not yet ready
-      }
-    }
-
-    // Sync actions (per-action tint, prominent, etc.)
-    final actions = widget.actions;
-    if (_lastActions != null && !_actionsEqual(_lastActions!, actions)) {
-      try {
-        final params = <String, dynamic>{
-          if (actions != null && actions.isNotEmpty)
-            'actions': actions.map((a) => a.toNativeMap()).toList(),
-        };
-        await ch.invokeMethod('updateActions', params);
-        _lastActions = actions != null ? List.of(actions) : null;
-      } catch (e) {
-        // Ignore errors if platform view is not yet ready
-      }
-    }
-
-    // Sync tint color
-    final tint =
-        widget.tintColor != null ? _colorToARGB(widget.tintColor!) : null;
-    if (_lastTint != tint) {
-      try {
-        await ch.invokeMethod('setStyle', {'tint': tint});
-        _lastTint = tint;
-      } catch (e) {
-        // Ignore errors if platform view is not yet ready
-      }
-    }
-  }
-
-  bool _actionsEqual(
-      List<AdaptiveAppBarAction>? a, List<AdaptiveAppBarAction>? b) {
-    if (identical(a, b)) return true;
-    if (a == null || b == null) return false;
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
+    // Snapshot inherited values before dispatch. Channel messages are FIFO; no asynchronous
+    // continuation reads this context after a route has been removed, or overwrites newer props.
+    _lastConfiguration = configuration;
+    _lastActions = widget.actions == null ? null : List.of(widget.actions!);
+    unawaited(
+      channel
+          .invokeMethod<void>('updateConfiguration', {
+            ...configuration,
+            'actions':
+                widget.actions?.map((a) => a.toNativeMap()).toList() ?? [],
+          })
+          .catchError((Object error) {
+            // A native view may already be released while its route is being torn down.
+            if (mounted && identical(channel, _channel)) {
+              _lastConfiguration = null;
+            }
+          }),
+    );
   }
 
   @override
@@ -268,19 +237,8 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
     final safePadding = MediaQuery.of(context).padding.top;
 
     final creationParams = <String, dynamic>{
-      // Hide native title when a titleWidget overlay is provided
-      if (widget.title != null && widget.titleWidget == null)
-        'title': widget.title!,
-      if (widget.leading == null && widget.leadingText != null)
-        'leading': widget.leadingText!,
-      if (widget.actions != null && widget.actions!.isNotEmpty)
-        'actions': widget.actions!.map((a) => a.toNativeMap()).toList(),
-      'isDark': _isDark,
-      'isRtl': _isRtl,
-      // The overlay draws the leading control; the native bar must still reserve its slot so
-      // its own centred title truncates against it rather than running underneath.
-      if (widget.leading != null) 'reservesLeading': true,
-      if (widget.tintColor != null) 'tint': _colorToARGB(widget.tintColor!),
+      ..._configuration,
+      'actions': widget.actions?.map((a) => a.toNativeMap()).toList() ?? [],
     };
 
     return AnimatedContainer(
@@ -304,48 +262,78 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
                 hitTestBehavior: PlatformViewHitTestBehavior.translucent,
               ),
             ),
-          if (widget.leading != null)
-            PositionedDirectional(
-              start: 16,
-              bottom: 3,
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: widget.leading!,
-              ),
+          Positioned(
+            left: 16,
+            right: 16,
+            top: safePadding,
+            bottom: 0,
+            child: NavigationToolbar(
+              leading:
+                  widget.leading ??
+                  (_nativeTitleInsets == null
+                      ? null
+                      : SizedBox(
+                          width:
+                              ((_isRtl
+                                          ? _nativeTitleInsets!.right
+                                          : _nativeTitleInsets!.left) -
+                                      16)
+                                  .clamp(0, double.infinity),
+                        )),
+              // UIKit measures its own item groups, including localised text actions.
+              // NavigationToolbar then measures the Flutter leading and centres the title
+              // where it fits, rather than reserving the wider group on both sides.
+              middle: _nativeTitleInsets == null ? null : widget.titleWidget,
+              trailing: _nativeTitleInsets == null
+                  ? null
+                  : SizedBox(
+                      width:
+                          ((_isRtl
+                                      ? _nativeTitleInsets!.left
+                                      : _nativeTitleInsets!.right) -
+                                  16)
+                              .clamp(0, double.infinity),
+                    ),
             ),
-          if (widget.titleWidget != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: safePadding,
-              bottom: 0,
-              child: Center(child: widget.titleWidget!),
-            ),
+          ),
         ],
       ),
     );
   }
 
   void _onPlatformViewCreated(int id) {
+    if (!mounted) return;
     _channel = MethodChannel('adaptive_platform_ui/ios26_toolbar_$id');
     _channel!.setMethodCallHandler(_handleMethodCall);
-    _lastIsDark = _isDark;
-    _lastIsRtl = _isRtl;
-    _lastTint =
-        widget.tintColor != null ? _colorToARGB(widget.tintColor!) : null;
-    _lastActions =
-        widget.actions != null ? List.of(widget.actions!) : null;
+    _lastConfiguration = null;
+    _syncPropsToNativeIfNeeded();
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call) async {
+    if (!mounted) return;
     switch (call.method) {
+      case 'onTitleInsetsChanged':
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final insets = EdgeInsets.only(
+          left: (args['left'] as num).toDouble(),
+          right: (args['right'] as num).toDouble(),
+        );
+        if (insets != _nativeTitleInsets) {
+          setState(() => _nativeTitleInsets = insets);
+        }
+        break;
       case 'onLeadingTapped':
         widget.onLeadingTap?.call();
         break;
       case 'onActionTapped':
         if (call.arguments is Map) {
           final index = (call.arguments as Map)['index'] as int?;
-          if (index != null) widget.onActionTap?.call(index);
+          if (index != null &&
+              index >= 0 &&
+              index < (widget.actions?.length ?? 0) &&
+              widget.actions![index].enabled) {
+            widget.onActionTap?.call(index);
+          }
         }
         break;
     }
@@ -353,7 +341,8 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
 
   Widget _buildFallbackToolbar() {
     return CupertinoNavigationBar(
-      middle: widget.titleWidget ??
+      middle:
+          widget.titleWidget ??
           (widget.title != null ? Text(widget.title!) : null),
       leading: widget.leading,
       trailing: widget.actions != null && widget.actions!.isNotEmpty
@@ -362,7 +351,7 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
               children: widget.actions!.map((action) {
                 return CupertinoButton(
                   padding: EdgeInsets.zero,
-                  onPressed: action.onPressed,
+                  onPressed: action.enabled ? action.onPressed : null,
                   child: action.icon != null
                       ? Icon(action.icon)
                       : Text(action.title ?? ''),
