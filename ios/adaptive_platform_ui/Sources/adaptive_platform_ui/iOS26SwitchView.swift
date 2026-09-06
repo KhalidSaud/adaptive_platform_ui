@@ -93,6 +93,8 @@ class iOS26SwitchView: NSObject, FlutterPlatformView {
 
         // Extract initial configuration
         if let config = args as? [String: Any] {
+            switchControl.accessibilityLabel = config["semanticLabel"] as? String
+
             // Set initial value
             if let value = config["value"] as? Bool {
                 switchControl.isOn = value
@@ -112,10 +114,8 @@ class iOS26SwitchView: NSObject, FlutterPlatformView {
         // Setup constraints
         _view.addSubview(switchControl)
         NSLayoutConstraint.activate([
-            switchControl.leadingAnchor.constraint(equalTo: _view.leadingAnchor),
-            switchControl.trailingAnchor.constraint(equalTo: _view.trailingAnchor),
-            switchControl.topAnchor.constraint(equalTo: _view.topAnchor),
-            switchControl.bottomAnchor.constraint(equalTo: _view.bottomAnchor),
+            switchControl.centerXAnchor.constraint(equalTo: _view.centerXAnchor),
+            switchControl.centerYAnchor.constraint(equalTo: _view.centerYAnchor),
         ])
 
         // Add value changed action
@@ -136,6 +136,12 @@ class iOS26SwitchView: NSObject, FlutterPlatformView {
 
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
+        case "setSemanticLabel":
+            if let args = call.arguments as? [String: Any] {
+                switchControl.accessibilityLabel = args["label"] as? String
+            }
+            result(nil)
+
         case "setValue":
             if let args = call.arguments as? [String: Any],
                let value = args["value"] as? Bool {

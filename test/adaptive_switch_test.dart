@@ -3,6 +3,58 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 
 void main() {
+  testWidgets(
+    'switch keeps its name, state and action together after a locale change',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        bool value = false;
+        Future<void> pump(String label) => tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: AdaptiveSwitch(
+                value: value,
+                semanticLabel: label,
+                onChanged: (next) => value = next,
+              ),
+            ),
+          ),
+        );
+        await pump('Notifications');
+        expect(
+          tester.getSemantics(find.bySemanticsLabel('Notifications')),
+          matchesSemantics(
+            label: 'Notifications',
+            hasToggledState: true,
+            isToggled: false,
+            hasEnabledState: true,
+            isEnabled: true,
+            hasTapAction: true,
+            hasFocusAction: true,
+            isFocusable: true,
+          ),
+        );
+        await tester.tap(find.byType(AdaptiveSwitch));
+        await pump('الإشعارات');
+        expect(
+          tester.getSemantics(find.bySemanticsLabel('الإشعارات')),
+          matchesSemantics(
+            label: 'الإشعارات',
+            hasToggledState: true,
+            isToggled: true,
+            hasEnabledState: true,
+            isEnabled: true,
+            hasTapAction: true,
+            hasFocusAction: true,
+            isFocusable: true,
+          ),
+        );
+        expect(find.bySemanticsLabel('Notifications'), findsNothing);
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
   group('AdaptiveSwitch', () {
     testWidgets('creates switch with initial value', (
       WidgetTester tester,

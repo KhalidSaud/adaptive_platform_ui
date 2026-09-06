@@ -22,10 +22,14 @@ class IOS26Switch extends StatefulWidget {
     required this.onChanged,
     this.activeColor,
     this.thumbColor,
+    this.semanticLabel,
   });
 
   /// Whether this switch is on or off
   final bool value;
+
+  /// Accessible name of the native control.
+  final String? semanticLabel;
 
   /// Called when the user toggles the switch on or off
   final ValueChanged<bool>? onChanged;
@@ -93,6 +97,12 @@ class _IOS26SwitchState extends State<IOS26Switch> {
   void didUpdateWidget(IOS26Switch oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (oldWidget.semanticLabel != widget.semanticLabel) {
+      _channel.invokeMethod('setSemanticLabel', {
+        'label': widget.semanticLabel,
+      });
+    }
+
     // Update native side if properties changed
     if (oldWidget.value != widget.value) {
       _channel.invokeMethod('setValue', {'value': widget.value});
@@ -124,6 +134,7 @@ class _IOS26SwitchState extends State<IOS26Switch> {
     return {
       'id': _id,
       'value': widget.value,
+      'semanticLabel': widget.semanticLabel,
       'enabled': widget.onChanged != null,
       if (widget.activeColor != null)
         'activeColor': _colorToARGB(widget.activeColor!),
@@ -158,17 +169,20 @@ class _IOS26SwitchState extends State<IOS26Switch> {
 
       return SizedBox(
         width: 63, // Standard iOS switch width
-        height: 29, // Standard iOS switch height
+        height: 44, // Full touch target around the native switch artwork
         child: platformView,
       );
     }
 
     // Fallback to CupertinoSwitch on other platforms
-    return CupertinoSwitch(
-      value: widget.value,
-      onChanged: widget.onChanged,
-      activeTrackColor: widget.activeColor,
-      thumbColor: widget.thumbColor ?? CupertinoColors.white,
+    return Semantics(
+      label: widget.semanticLabel,
+      child: CupertinoSwitch(
+        value: widget.value,
+        onChanged: widget.onChanged,
+        activeTrackColor: widget.activeColor,
+        thumbColor: widget.thumbColor ?? CupertinoColors.white,
+      ),
     );
   }
 }

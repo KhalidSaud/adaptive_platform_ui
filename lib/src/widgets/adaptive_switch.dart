@@ -30,10 +30,14 @@ class AdaptiveSwitch extends StatelessWidget {
     required this.onChanged,
     this.activeColor,
     this.thumbColor,
+    this.semanticLabel,
   });
 
   /// Whether this switch is on or off
   final bool value;
+
+  /// Accessible name, also forwarded to the native UISwitch.
+  final String? semanticLabel;
 
   /// Called when the user toggles the switch on or off
   ///
@@ -58,6 +62,8 @@ class AdaptiveSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget labelled(Widget control) =>
+        Semantics(label: semanticLabel, child: control);
     // iOS 26+ - Use native iOS 26 switch
     if (PlatformInfo.isIOS26OrHigher()) {
       return IOS26Switch(
@@ -65,23 +71,47 @@ class AdaptiveSwitch extends StatelessWidget {
         onChanged: onChanged,
         activeColor: activeColor,
         thumbColor: thumbColor,
+        semanticLabel: semanticLabel,
       );
     }
 
     // iOS 18 and below - Use traditional CupertinoSwitch
     if (PlatformInfo.isIOS) {
-      return CupertinoSwitch(
-        value: value,
-        onChanged: onChanged,
-        activeTrackColor:
-            activeColor ?? CupertinoTheme.of(context).primaryColor,
-        thumbColor: thumbColor,
+      return labelled(
+        CupertinoSwitch(
+          value: value,
+          onChanged: onChanged,
+          activeTrackColor:
+              activeColor ?? CupertinoTheme.of(context).primaryColor,
+          thumbColor: thumbColor,
+        ),
       );
     }
 
     // Android - Use Material Design Switch
     if (PlatformInfo.isAndroid) {
-      return Switch(
+      return labelled(
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          thumbColor: thumbColor != null
+              ? WidgetStateProperty.all(thumbColor)
+              : null,
+          trackColor: activeColor != null
+              ? WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return activeColor;
+                  }
+                  return null;
+                })
+              : null,
+        ),
+      );
+    }
+
+    // Fallback for other platforms (web, desktop, etc.)
+    return labelled(
+      Switch(
         value: value,
         onChanged: onChanged,
         thumbColor: thumbColor != null
@@ -95,24 +125,7 @@ class AdaptiveSwitch extends StatelessWidget {
                 return null;
               })
             : null,
-      );
-    }
-
-    // Fallback for other platforms (web, desktop, etc.)
-    return Switch(
-      value: value,
-      onChanged: onChanged,
-      thumbColor: thumbColor != null
-          ? WidgetStateProperty.all(thumbColor)
-          : null,
-      trackColor: activeColor != null
-          ? WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.selected)) {
-                return activeColor;
-              }
-              return null;
-            })
-          : null,
+      ),
     );
   }
 }
