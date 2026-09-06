@@ -125,11 +125,13 @@ class iOS26ToolbarPlatformView: NSObject, FlutterPlatformView {
 
         containerView.addSubview(navigationBar)
 
+        // Centre UIKit's 44-point control band with the Flutter overlay. The taller container
+        // includes the clearance that the content inset and scroll backing reserve.
         NSLayoutConstraint.activate([
-            navigationBar.topAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.topAnchor),
+            navigationBar.centerYAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.centerYAnchor),
+            navigationBar.heightAnchor.constraint(equalToConstant: 44),
             navigationBar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            navigationBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            navigationBar.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            navigationBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
         ])
     }
 

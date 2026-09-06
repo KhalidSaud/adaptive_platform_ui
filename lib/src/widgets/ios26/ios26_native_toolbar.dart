@@ -22,10 +22,13 @@ class IOS26NativeToolbar extends StatefulWidget {
     this.onActionTap,
     this.titleWidget,
     this.tintColor,
-    this.height = 44.0,
+    this.height = defaultHeight,
     this.showNativeView = true,
     this.routeTransitions = false,
   });
+
+  /// A 44-point control needs clearance from the scroll backing on both sides.
+  static const double defaultHeight = 56;
 
   final String? title;
   final Widget? leading;
@@ -267,33 +270,40 @@ class _IOS26NativeToolbarState extends State<IOS26NativeToolbar> {
             right: 16,
             top: safePadding,
             bottom: 0,
-            child: NavigationToolbar(
-              leading:
-                  widget.leading ??
-                  (_nativeTitleInsets == null
+            child: Center(
+              child: SizedBox(
+                height: 44,
+                child: NavigationToolbar(
+                  leading:
+                      widget.leading ??
+                      (_nativeTitleInsets == null
+                          ? null
+                          : SizedBox(
+                              width:
+                                  ((_isRtl
+                                              ? _nativeTitleInsets!.right
+                                              : _nativeTitleInsets!.left) -
+                                          16)
+                                      .clamp(0, double.infinity),
+                            )),
+                  // UIKit measures its own item groups, including localised text actions.
+                  // NavigationToolbar then measures the Flutter leading and centres the title
+                  // where it fits, rather than reserving the wider group on both sides.
+                  middle: _nativeTitleInsets == null
+                      ? null
+                      : widget.titleWidget,
+                  trailing: _nativeTitleInsets == null
                       ? null
                       : SizedBox(
                           width:
                               ((_isRtl
-                                          ? _nativeTitleInsets!.right
-                                          : _nativeTitleInsets!.left) -
+                                          ? _nativeTitleInsets!.left
+                                          : _nativeTitleInsets!.right) -
                                       16)
                                   .clamp(0, double.infinity),
-                        )),
-              // UIKit measures its own item groups, including localised text actions.
-              // NavigationToolbar then measures the Flutter leading and centres the title
-              // where it fits, rather than reserving the wider group on both sides.
-              middle: _nativeTitleInsets == null ? null : widget.titleWidget,
-              trailing: _nativeTitleInsets == null
-                  ? null
-                  : SizedBox(
-                      width:
-                          ((_isRtl
-                                      ? _nativeTitleInsets!.left
-                                      : _nativeTitleInsets!.right) -
-                                  16)
-                              .clamp(0, double.infinity),
-                    ),
+                        ),
+                ),
+              ),
             ),
           ),
         ],

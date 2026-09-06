@@ -11,7 +11,7 @@ import 'ios26_toolbar_route_transition.dart';
 /// Height of the iOS 26 Liquid Glass toolbar's content area (excluding the
 /// status bar), matching [IOS26NativeToolbar]'s default height. The toolbar is
 /// an overlay, so this amount is added to the body's top padding.
-const double kToolbarContentHeight = 44.0;
+const double kToolbarContentHeight = IOS26NativeToolbar.defaultHeight;
 
 /// Native iOS 26 scaffold with UITabBar
 class IOS26Scaffold extends StatefulWidget {

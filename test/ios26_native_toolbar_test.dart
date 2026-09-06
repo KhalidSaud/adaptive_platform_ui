@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:adaptive_platform_ui/src/widgets/adaptive_app_bar_action.dart';
 import 'package:adaptive_platform_ui/src/widgets/ios26/ios26_native_toolbar.dart';
+import 'package:adaptive_platform_ui/src/widgets/ios26/ios26_scaffold.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -88,7 +89,9 @@ void main() {
         await tester.pump();
         final title = tester.getRect(find.byKey(const Key('title')));
         final leading = tester.getRect(find.byKey(const Key('leading')));
-        expect(leading.center.dy, 22);
+        final toolbarBounds = tester.getRect(find.byType(IOS26NativeToolbar));
+        expect(leading.top - toolbarBounds.top, 6);
+        expect(toolbarBounds.bottom - leading.bottom, 6);
         if (direction == TextDirection.ltr) {
           expect(title.left, greaterThanOrEqualTo(leading.right + 8));
           expect(title.right, lessThanOrEqualTo(390 - 128));
@@ -123,4 +126,39 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
   }
+
+  testWidgets(
+    'body inset and toolbar extent include control clearance',
+    (tester) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform_views,
+        (_) async => null,
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform_views,
+          null,
+        );
+      });
+      await tester.pumpWidget(
+        const CupertinoApp(
+          home: MediaQuery(
+            data: MediaQueryData(
+              padding: EdgeInsets.only(top: 62),
+              viewPadding: EdgeInsets.only(top: 62),
+            ),
+            child: IOS26Scaffold(
+              leading: SizedBox.square(dimension: 44),
+              children: [SizedBox(key: Key('body'))],
+            ),
+          ),
+        ),
+      );
+      final body = tester.element(find.byKey(const Key('body')));
+      expect(MediaQuery.paddingOf(body).top, 118);
+      expect(MediaQuery.viewPaddingOf(body).top, 118);
+      expect(tester.getSize(find.byType(IOS26NativeToolbar)).height, 118);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 }
