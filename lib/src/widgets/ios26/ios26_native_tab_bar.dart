@@ -223,6 +223,11 @@ class _IOS26NativeTabBarState extends State<IOS26NativeTabBar> {
               gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
                 Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
               },
+              // The arena's late cancel leaves the Liquid Glass bar's recognizers stale, so a tap is
+              // sometimes dropped (flutter/flutter#175099); the hit test alone still blocks a touch
+              // on a Flutter widget above the bar.
+              gestureBlockingPolicy:
+                  UiKitViewGestureBlockingPolicy.doNotBlockGesture,
             )
           : const SizedBox.shrink();
 
